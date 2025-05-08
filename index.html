@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>填数游戏</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        
+        #title {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+
+        .container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+
+        .panel {
+            width: 48%;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        #leftPanel {
+            background-color: #fff8dc; /* 蛋黄色 */
+        }
+
+        #rightPanel {
+            background-color: #f0fff0; /* 淡绿色 */
+        }
+
+        table {
+            border-collapse: collapse;
+            margin: 0 auto;
+        }
+
+        td {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #ccc;
+            text-align: center;
+            font-size: 20px;
+            background-color: white;
+        }
+
+        .buttons {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .num-btn {
+            width: 40px;
+            height: 40px;
+            margin: 0 5px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+
+        .complete-btn {
+            display: block;
+            margin: 10px auto;
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+
+        .timer {
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .selected {
+            background-color: #add8e6 !important;
+        }
+
+        .error {
+            background-color: #ffcccc !important;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="title">填数游戏</h1>
+    <button id="startBtn" style="display: block; margin: 0 auto;">开始游戏</button>
+    
+    <div class="container">
+        <div id="leftPanel" class="panel">
+            <div class="timer">用时：<span id="leftTime">0</span>秒</div>
+            <table id="leftGrid"></table>
+            <div class="buttons" id="leftButtons"></div>
+            <button class="complete-btn" onclick="submit('left')">完成</button>
+        </div>
+        
+        <div id="rightPanel" class="panel">
+            <div class="timer">用时：<span id="rightTime">0</span>秒</div>
+            <table id="rightGrid"></table>
+            <div class="buttons" id="rightButtons"></div>
+            <button class="complete-btn" onclick="submit('right')">完成</button>
+        </div>
+    </div>
+
+    <script>
+        let gameData = {
+            solution: [],
+            holes: [],
+            currentSelection: { side: null, row: -1, col: -1 },
+            timers: { left: 0, right: 0 },
+            timerIDs: { left: null, right: null }
+        };
+
+        // 生成数独解决方案
+        function generateSolution() {
+            let base = [1, 2, 3, 4, 5];
+            let solution = [];
+            for(let i=0; i<5; i++) {
+                let row = [...base];
+                row = row.concat(row.splice(0, i));
+                solution.push(row);
+            }
+            return solution;
+        }
+
+        // 生成7个不重复的空格
+        function generateHoles() {
+            let holes = new Set();
+            while(holes.size < 7) {
+                holes.add(Math.floor(Math.random()*25));
+            }
+            return [...holes].map(n => ({row: Math.floor(n/5), col: n%5}));
+        }
+
+        // 创建游戏界面
+        function createGame(side) {
+            const grid = document.getElementById(side + 'Grid');
+            grid.innerHTML = '';
+            
+            for(let i=0; i<5; i++) {
+                let tr = grid.insertRow();
+                for(let j=0; j<5; j++) {
+                    let td = tr.insertCell();
+                    if(gameData.holes.some(h => h.row === i && h.col === j)) {
+                        td.dataset.answer = gameData.solution[i][j];
+                        td.onclick = () => selectCell(side, i, j);
+                    } else {
+                        td.textContent = gameData.solution[i][j];
+                    }
+                }
+            }
+        }
+
+        // 选择单元格
+        function selectCell(side, row, col) {
+            gameData.currentSelection = { side, row, col };
+            document.querySelectorAll('td').forEach(td => td.classList.remove('selected'));
+            document.querySelectorAll(`#${side}Grid td`)[row*5+col].classList.add('selected');
+        }
+
+        // 输入数字
+        function inputNumber(side, num) {
+            if(gameData.currentSelection.side !== side) return;
+            
+            const td = document.querySelectorAll(`#${side}Grid td`)[
+                gameData.currentSelection.row*5 + gameData.currentSelection.col];
+            
+            td.textContent = num;
+            td.classList.remove('error');
+            checkValidation(side);
+        }
+
+        // 检查有效性
+        function checkValidation(side) {
+            let isValid = true;
+            const tds = document.querySelectorAll(`#${side}Grid td`);
+            
+            // 检查行
+            for(let i=0; i<5; i++) {
+                let row = new Set();
+                for(let j=0; j<5; j++) {
+                    let num = tds[i*5+j].textContent;
+                    if(num && row.has(num)) {
+                        markErrors(i, j, side);
+                        isValid = false;
+                    }
+                    row.add(num);
+                }
+            }
+
+            // 检查列
+            for(let j=0; j<5; j++) {
+                let col = new Set();
+                for(let i=0; i<5; i++) {
+                    let num = tds[i*5+j].textContent;
+                    if(num && col.has(num)) {
+                        markErrors(i, j, side);
+                        isValid = false;
+                    }
+                    col.add(num);
+                }
+            }
+
+            return isValid;
+        }
+
+        // 标记错误
+        function markErrors(row, col, side) {
+            document.querySelectorAll(`#${side}Grid td`)[row*5+col].classList.add('error');
+        }
+
+        // 提交结果
+        function submit(side) {
+            clearInterval(gameData.timerIDs[side]);
+            if(checkValidation(side)) {
+                alert('恭喜完成！用时：' + gameData.timers[side] + '秒');
+            } else {
+                alert('存在重复数字，请检查！');
+            }
+        }
+
+        // 初始化游戏
+        function initGame() {
+            gameData.solution = generateSolution();
+            gameData.holes = generateHoles();
+            
+            ['left', 'right'].forEach(side => {
+                createGame(side);
+                gameData.timers[side] = 0;
+                gameData.timerIDs[side] = setInterval(() => {
+                    gameData.timers[side]++;
+                    document.getElementById(side+'Time').textContent = gameData.timers[side];
+                }, 1000);
+            });
+        }
+
+        // 创建数字按钮
+        function createButtons() {
+            ['left', 'right'].forEach(side => {
+                let container = document.getElementById(side+'Buttons');
+                for(let i=1; i<=5; i++) {
+                    let btn = document.createElement('button');
+                    btn.className = 'num-btn';
+                    btn.textContent = i;
+                    btn.onclick = () => inputNumber(side, i);
+                    container.appendChild(btn);
+                }
+            });
+        }
+
+        // 初始化
+        document.getElementById('startBtn').onclick = () => {
+            initGame();
+            createButtons();
+            document.getElementById('startBtn').disabled = true;
+        };
+    </script>
+</body>
+</html>
